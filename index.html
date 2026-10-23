@@ -109,7 +109,7 @@ textarea.in{resize:vertical;min-height:92px}
 .notice{margin-top:22px;padding:12px 18px;border-radius:14px;background:linear-gradient(90deg,rgba(255,210,31,.2),rgba(247,148,29,.12));border:1px solid rgba(255,210,31,.5);font-weight:600;font-size:14px;animation:rise .6s}
 
 /* stats */
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:24px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px;margin-top:24px}
 @media(max-width:800px){.stats{grid-template-columns:repeat(2,1fr)}}
 .stat{padding:18px 20px;position:relative;overflow:hidden;animation:rise .6s both}
 .stat:nth-child(2){animation-delay:.08s}.stat:nth-child(3){animation-delay:.16s}.stat:nth-child(4){animation-delay:.24s}
@@ -167,6 +167,23 @@ dialog h2{font-family:var(--font-head);letter-spacing:2px;margin:0 0 14px;font-s
 .embed.pic img{min-height:0;background:rgba(255,255,255,.05)}
 .embed.pic img:not([data-ok]){min-height:220px;object-fit:contain}
 .imgfail{display:block;width:100%;padding:34px 14px;text-align:center;border:1px dashed var(--line);border-radius:14px;color:var(--muted);font-size:13px;font-weight:600;text-decoration:none;background:rgba(255,255,255,.04)}
+
+/* ===== PHONE FIXES ===== */
+.admin-grid>*{min-width:0}
+@media(max-width:920px){.admin-grid{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:700px){
+  .bar{position:static}
+  .bar .wrap{gap:8px 8px}
+  .bar img{height:40px}
+  .bar h1{font-size:19px;letter-spacing:1.5px;min-width:0}
+  .bar .btn.sm{font-size:12px;padding:5px 10px}
+  .panel{padding:16px}
+  .stat b{font-size:32px}
+  .stats{gap:10px}
+  .post-row .acts{width:100%}
+  .post-row .acts .btn{flex:1;justify-content:center}
+}
+.post-row i[data-v]{font-style:normal}
 </style>
 </head>
 <body>
@@ -202,6 +219,7 @@ dialog h2{font-family:var(--font-head);letter-spacing:2px;margin:0 0 14px;font-s
       <div class="glass stat"><b id="sTotal">0</b><span>Total posts</span></div>
       <div class="glass stat"><b id="sPinned">0</b><span>Pinned HOT</span></div>
       <div class="glass stat"><b id="sCats">0</b><span>Categories</span></div>
+      <div class="glass stat"><b id="sViews">0</b><span>Total site views</span></div>
       <div class="glass stat"><b id="sLast" style="font-size:24px;padding-top:9px">—</b><span>Last post</span></div>
     </div>
 
@@ -426,12 +444,19 @@ function nice(err) {
 
 /* ---------- auth ---------- */
 function showLogin() { $('panelView').classList.add('hidden'); $('loginView').classList.remove('hidden'); }
+let lastSig = '', unsubSite = null;
+const nc = n => { n = n || 0; return n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : n >= 1e4 ? Math.round(n / 1e3) + 'K' : n >= 1e3 ? (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K' : String(n); };
+function paintViews() { document.querySelectorAll('[data-v]').forEach(el => { const p = POSTS.find(x => x.id === el.dataset.v); if (p) el.textContent = nc(p.views); }); }
 function showPanel(user) {
   $('loginView').classList.add('hidden'); $('panelView').classList.remove('hidden');
-  if (unsub) unsub();
+  try { localStorage.setItem('fans_noc', '1'); } catch (e) {}   // your own visits to the site are not counted
+  if (unsub) unsub(); if (unsubSite) unsubSite();
+  unsubSite = onSnapshot(doc(db, 'stats', 'site'), s => countUp($('sViews'), s.exists() ? (s.data().views || 0) : 0), () => {});
   unsub = onSnapshot(query(collection(db, 'posts'), orderBy('created', 'desc')), snap => {
     POSTS = sortPosts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    renderAll();
+    const sig = POSTS.map(p => [p.id, p.updated || 0, p.created || 0, p.pinned ? 1 : 0].join('|')).join('~');
+    if (sig === lastSig) { paintViews(); return; }      // only view numbers changed: no re-draw
+    lastSig = sig; renderAll();
   }, err => toast(nice(err), true));
 }
 if (!FB_READY) {
@@ -446,7 +471,7 @@ $('loginForm').addEventListener('submit', async e => {
   try { await signInWithEmailAndPassword(auth, $('em').value.trim(), $('pw').value); $('pw').value = ''; }
   catch (err) { toast(nice(err), true); }
 });
-$('logoutBtn').onclick = async () => { if (unsub) { unsub(); unsub = null; } await signOut(auth); };
+$('logoutBtn').onclick = async () => { if (unsub) { unsub(); unsub = null; } if (unsubSite) { unsubSite(); unsubSite = null; } lastSig = ''; try { localStorage.removeItem('fans_noc'); } catch (e) {} await signOut(auth); };
 $('pwBtn').onclick = async () => {
   const u = auth && auth.currentUser; if (!u) return;
   if (!confirm('Send a password-reset email to ' + u.email + '?')) return;
@@ -470,7 +495,7 @@ function renderList() {
     const t = thumbOf(p);
     return `<div class="post-row" data-id="${esc(p.id)}" style="animation-delay:${Math.min(i, 8) * .04}s">
       ${t ? `<img class="pt" src="${esc(t)}" alt="" referrerpolicy="no-referrer" onerror="this.outerHTML='<div class=&quot;pt&quot;></div>'">` : '<div class="pt"></div>'}
-      <div class="info"><b>${p.pinned ? '📌 ' : ''}${esc(p.title)}</b><small>${esc(p.category)} · ${(p.items || []).length} item(s) · ${timeAgo(p.created)}</small></div>
+      <div class="info"><b>${p.pinned ? '📌 ' : ''}${esc(p.title)}</b><small>${esc(p.category)} · ${(p.items || []).length} item(s) · 👁 <i data-v="${esc(p.id)}">${nc(p.views)}</i> · ${timeAgo(p.created)}</small></div>
       <div class="acts">
         <a class="btn ghost sm" href="./#p=${esc(p.id)}" target="_blank">VIEW</a>
         <button class="btn ghost sm" data-a="edit">EDIT</button>
