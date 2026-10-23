@@ -7,15 +7,17 @@
 <meta name="theme-color" content="#0e0504">
 <title>Fans Admin</title>
 <link rel="icon" id="fav" href="data:,">
-<link href="https://fonts.googleapis.com/css2?family=Bangers&family=Noto+Sans+Sinhala:wght@400;600;700&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bangers&family=Noto+Sans+Sinhala:wght@400;600;700&family=Poppins:wght@400;500;600;700&family=Abhaya+Libre:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{
   --red:#e5261b;--orange:#f7941d;--yellow:#ffd21f;--deep:#8f1d12;
   --bg:#0e0504;--card:#1b0b09;--text:#fff3e4;--muted:#c4a597;--line:rgba(255,200,150,.15);
   --grad:linear-gradient(90deg,#e5261b,#f7941d,#ffd21f);
   --grad2:linear-gradient(135deg,#e5261b,#f7941d);
-  --font-head:'Bangers','Noto Sans Sinhala',system-ui,sans-serif;
-  --font-body:'Poppins','Noto Sans Sinhala',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  /* Sinhala letters automatically use --font-si, English letters use Poppins / Bangers */
+  --font-si:'Abhaya Libre','Noto Sans Sinhala';
+  --font-head:'Bangers',var(--font-si),system-ui,sans-serif;
+  --font-body:'Poppins',var(--font-si),system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
 }
 *{box-sizing:border-box}
 html{background:var(--bg);scroll-behavior:smooth}
@@ -155,6 +157,7 @@ dialog h2{font-family:var(--font-head);letter-spacing:2px;margin:0 0 14px;font-s
 .imgs:empty{display:none}
 .irow{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:6px;background:rgba(0,0,0,.25)}
 .irow img{width:78px;height:58px;object-fit:cover;border-radius:8px;flex-shrink:0}
+.irow .ico{width:78px;height:58px;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:24px;background:rgba(255,255,255,.07)}
 .irow .nm{flex:1;min-width:0;font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .irow button{border:1px solid var(--line);background:rgba(255,255,255,.08);color:#fff;border-radius:8px;width:32px;height:32px;cursor:pointer}
 .irow button:hover{background:var(--red)}
@@ -229,16 +232,16 @@ dialog h2{font-family:var(--font-head);letter-spacing:2px;margin:0 0 14px;font-s
         </div>
 
         <div class="field"><label for="desc">Description <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
-          <textarea class="in" id="desc" maxlength="3000" style="min-height:72px" placeholder="A few words about this post…"></textarea></div>
+          <textarea class="in" id="desc" maxlength="6000" wrap="soft" style="min-height:150px;white-space:pre-wrap;tab-size:4;resize:vertical;line-height:1.7" placeholder="Paste or type the caption here — spaces, blank lines, bullets and emojis are kept exactly as you paste them."></textarea><small>Shown on the site exactly as written (line breaks, blank lines, spaces and emojis).</small></div>
 
         <div class="field">
-          <label>Photos <span style="font-weight:400;color:var(--muted)">(image links or uploads, one by one — shown top to bottom under the description, before the Facebook post)</span></label>
-          <div class="row" style="flex-wrap:nowrap"><input class="in" id="imgUrl" placeholder="Paste an image link, then press ADD" style="flex:1;min-width:0"><button type="button" class="btn sm" id="imgUrlBtn">➕ ADD LINK</button></div>
+          <label>Photos <span style="font-weight:400;color:var(--muted)">(paste any link — image, Google, Facebook, Instagram, YouTube, any website — or upload; shown top to bottom under the description)</span></label>
+          <div class="row" style="flex-wrap:nowrap"><input class="in" id="imgUrl" placeholder="Paste any link here (it is added automatically)" style="flex:1;min-width:0"><button type="button" class="btn sm" id="imgUrlBtn">➕ ADD LINK</button></div>
           <div class="row"><label class="btn ghost sm" style="cursor:pointer">⬆ UPLOAD IMAGE<input type="file" id="imgFile" accept="image/*" multiple hidden></label>
             <small id="imgInfo" style="color:var(--muted)">No photos added</small></div>
           <div class="imgs" id="imgList"></div>
           <div class="sizebar"><i id="sizeI"></i></div>
-          <small>Image <b>links</b> take no space. Uploaded photos are shrunk and stored in the post (about 3–6 per post). Use ▲▼ to reorder. The links box above is for the Facebook / YouTube / other posts, which show after the photos.</small>
+          <small>Image <b>links</b> take no space. If you paste a normal web page (news, Google result…) its main picture is used and tapping the picture opens the page. Uploaded photos are shrunk and stored in the post (about 3–6 per post). Use ▲▼ to reorder — the site shows everything in this order.</small>
         </div>
 
         <div class="field">
@@ -362,7 +365,10 @@ function renderEmbed(item) {
   const src = isData ? '' : `<a class="src" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Open original ↗</a>`;
   let inner = '';
   switch (t.type) {
-    case 'image': return `<div class="embed pic"><img src="${esc(url)}" data-src="${esc(url)}" alt="" decoding="async" referrerpolicy="no-referrer" onload="this.dataset.ok=1" onerror="imgFail(this)"></div>`;
+    case 'image': {
+      const im = `<img src="${esc(url)}" data-src="${esc(url)}" alt="" decoding="async" referrerpolicy="no-referrer" onload="this.dataset.ok=1" onerror="imgFail(this)">`;
+      return `<div class="embed pic">${item.link && /^https?:\/\//i.test(item.link) ? `<a href="${esc(item.link)}" target="_blank" rel="noopener noreferrer">${im}</a>` : im}</div>`;
+    }
     case 'video': inner = `<video src="${esc(url)}" controls playsinline preload="metadata"></video>`; break;
     case 'youtube': inner = `<iframe class="yt" src="https://www.youtube-nocookie.com/embed/${esc(t.id)}" allowfullscreen loading="lazy" allow="accelerometer; encrypted-media; picture-in-picture"></iframe>`; break;
     case 'fbpost': inner = `<iframe src="https://www.facebook.com/plugins/post.php?href=${eu(fbHref(url))}&show_text=true&width=750" style="height:640px" scrolling="yes" frameborder="0" allowfullscreen allow="encrypted-media; picture-in-picture; web-share" loading="lazy"></iframe>`; break;
@@ -569,10 +575,16 @@ $('file').addEventListener('change', async e => {
 const BUDGET = 900000; // bytes of image data per post (Firestore doc limit is ~1,048,576)
 const photoBytes = () => PHOTOS.reduce((n, p) => n + (p.url.startsWith('data:') ? p.url.length : 0), 0);
 function drawPhotos() {
-  $('imgList').innerHTML = PHOTOS.map((p, i) => `<div class="irow" data-i="${i}"><img src="${esc(p.url)}" alt="" referrerpolicy="no-referrer"><span class="nm">Photo ${i + 1} · ${p.url.startsWith('data:') ? Math.round(p.url.length / 1024) + ' KB (uploaded)' : esc(p.url)}</span>
-    <button type="button" data-m="up" title="Move up">▲</button><button type="button" data-m="down" title="Move down">▼</button><button type="button" data-m="del" title="Remove">✕</button></div>`).join('');
+  $('imgList').innerHTML = PHOTOS.map((p, i) => {
+    const up = p.url.startsWith('data:');
+    const pic = p.kind === 'image' ? `<img src="${esc(p.url)}" alt="" referrerpolicy="no-referrer">` : `<span class="ico">🔗</span>`;
+    const lbl = p.kind === 'image' ? (up ? 'Photo ' + (i + 1) + ' · ' + Math.round(p.url.length / 1024) + ' KB (uploaded)' : 'Photo ' + (i + 1) + ' · ' + esc(p.url))
+      : esc((TYPE_LABEL[parseItem(p.url).type] || 'Link') + ' · ' + p.url);
+    return `<div class="irow" data-i="${i}">${pic}<span class="nm">${lbl}</span>
+    <button type="button" data-m="up" title="Move up">▲</button><button type="button" data-m="down" title="Move down">▼</button><button type="button" data-m="del" title="Remove">✕</button></div>`;
+  }).join('');
   const b = photoBytes();
-  $('imgInfo').textContent = PHOTOS.length ? `${PHOTOS.length} photo(s) · uploads ${Math.round(b / 1024)} KB of ${Math.round(BUDGET / 1024)} KB` : 'No photos added';
+  $('imgInfo').textContent = PHOTOS.length ? `${PHOTOS.length} item(s)` + (b ? ` · uploads ${Math.round(b / 1024)} KB of ${Math.round(BUDGET / 1024)} KB` : '') : 'Nothing added yet';
   $('sizeI').style.width = Math.min(100, b / BUDGET * 100) + '%';
 }
 $('imgList').addEventListener('click', e => {
@@ -593,14 +605,66 @@ async function addPhoto(file) {
   }
   throw new Error('Not enough room left for this photo in this post.');
 }
-function addImgLinks() {
+/* ---- add ANY link: direct image, Google image result, social post, or normal web page ---- */
+const IMG_HOST = /(^|\.)(fbcdn\.net|cdninstagram\.com|twimg\.com|googleusercontent\.com|gstatic\.com|ibb\.co|postimg\.cc|hscicdn\.com|pinimg\.com|cloudinary\.com|imgix\.net|images\.unsplash\.com|i\.imgur\.com|staticflickr\.com|ytimg\.com|media-amazon\.com|wp\.com)$/i;
+function looksImage(u) {
+  try {
+    const x = new URL(u), h = x.hostname.toLowerCase();
+    return /\.(jpe?g|png|gif|webp|avif|bmp|svg)(?=$|[?#,/])/i.test(x.pathname) || /[?&](format|fm|ext)=(jpe?g|png|webp|gif)/i.test(x.search)
+      || IMG_HOST.test(h) || /^(img|image|images|media|cdn|static)\d*\./i.test(h);
+  } catch (e) { return false; }
+}
+function probeImage(u, ms = 7000) {
+  return new Promise(res => {
+    const im = new Image(); im.referrerPolicy = 'no-referrer'; let done = false;
+    const f = v => { if (!done) { done = true; res(v); } };
+    im.onload = () => f(im.naturalWidth > 0); im.onerror = () => f(false); setTimeout(() => f(false), ms); im.src = u;
+  });
+}
+/* Google result links: google.com/imgres?imgurl=…  and  google.com/url?q=… */
+function unwrapGoogle(u) {
+  try {
+    const x = new URL(u);
+    if (/(^|\.)google\.[a-z.]+$/i.test(x.hostname)) {
+      if (/\/imgres$/.test(x.pathname) && x.searchParams.get('imgurl')) return { img: x.searchParams.get('imgurl'), link: x.searchParams.get('imgrefurl') || '' };
+      if (/\/url$/.test(x.pathname)) { const t = x.searchParams.get('q') || x.searchParams.get('url'); if (/^https?:/i.test(t || '')) return { url: t }; }
+    }
+  } catch (e) {}
+  return null;
+}
+async function classify(u) {
+  const g = unwrapGoogle(u);
+  if (g && g.img) return { url: g.img, kind: 'image', link: /^https?:/i.test(g.link) ? g.link : '' };
+  if (g && g.url) u = g.url;
+  if (isFbShare(u)) throw new Error('Facebook "share" links don\'t work — open it and paste the full post address');
+  const t = parseItem(u).type;
+  if (t === 'image') return { url: u, kind: 'image' };
+  if (t !== 'link') return { url: u, kind: 'embed' };                 // Facebook, YouTube, Instagram, TikTok, X, video
+  if (looksImage(u) || await probeImage(u)) return { url: u, kind: 'image' };
+  const m = await enrich(u);                                            // ordinary web page → use its picture
+  if (m && m.image && /^https?:\/\//i.test(m.image)) return { url: m.image, kind: 'image', link: u };
+  return { url: u, kind: 'embed' };                                     // no picture found → shows as a link card
+}
+let addingLinks = false;
+async function addImgLinks() {
+  if (addingLinks) return;
   const urls = ($('imgUrl').value.match(/https?:\/\/[^\s<>"']+/gi) || []);
-  if (!urls.length) return toast('Paste an image link (starting with http)', true);
-  urls.forEach(u => { if (PHOTOS.length < 30 && !PHOTOS.some(p => p.url === u)) PHOTOS.push({ url: u, kind: 'image' }); });
-  $('imgUrl').value = ''; drawPhotos(); toast(urls.length + ' image link' + (urls.length > 1 ? 's' : '') + ' added ✔');
+  if (!urls.length) return toast('Paste a link (starting with http)', true);
+  addingLinks = true; $('imgUrlBtn').disabled = true; $('imgUrlBtn').textContent = 'CHECKING…';
+  let ok = 0, bad = 0;
+  for (const raw of urls) {
+    if (PHOTOS.length >= 30) { toast('Maximum 30 items per post.', true); break; }
+    try {
+      const it = await classify(raw);
+      if (!PHOTOS.some(p => p.url === it.url)) { PHOTOS.push(it); ok++; drawPhotos(); }
+    } catch (err) { bad++; toast(err.message, true); }
+  }
+  $('imgUrl').value = ''; addingLinks = false; $('imgUrlBtn').disabled = false; $('imgUrlBtn').textContent = '➕ ADD LINK';
+  if (ok) toast(ok + ' added ✔');
 }
 $('imgUrlBtn').onclick = addImgLinks;
 $('imgUrl').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); addImgLinks(); } });
+$('imgUrl').addEventListener('paste', () => setTimeout(addImgLinks, 80));   // paste = add, no need to press the button
 $('imgFile').addEventListener('change', async e => {
   const files = [...e.target.files]; e.target.value = '';
   let ok = 0;
@@ -617,9 +681,9 @@ function resetForm() {
 }
 function startEdit(p) {
   resetForm(); editingId = p.id; titleTouched = true;
-  const isImg = i => i.kind === 'image' || parseItem(i.url).type === 'image';
-  $('links').value = (p.items || []).filter(i => !isImg(i)).map(i => i.url).join('\n');
-  PHOTOS = (p.items || []).filter(isImg).map(i => ({ url: i.url, kind: 'image' })); drawPhotos();
+  const inList = i => i.kind === 'image' || i.kind === 'embed' || parseItem(i.url).type === 'image';
+  $('links').value = (p.items || []).filter(i => !inList(i)).map(i => i.url).join('\n');
+  PHOTOS = (p.items || []).filter(inList).map(i => ({ url: i.url, kind: i.kind === 'embed' ? 'embed' : 'image', ...(i.link ? { link: i.link } : {}) })); drawPhotos();
   (p.items || []).forEach(i => { if (i.meta) META[i.url] = i.meta; });
   $('title').value = p.title; $('cat').value = p.category; $('desc').value = p.desc || ''; $('pinned').checked = !!p.pinned;
   setThumb(p.thumb || '');
@@ -630,6 +694,8 @@ $('cancelBtn').onclick = resetForm;
 document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !$('panelView').classList.contains('hidden')) $('postForm').requestSubmit(); });
 
 const clip = (s, n) => String(s || '').trim().slice(0, n);
+/* description: keep inner spaces, indents, blank lines; only drop empty lines at the very start / end */
+const keepText = (s, n) => String(s || '').replace(/\r\n?/g, '\n').replace(/[\u200B\uFEFF]/g, '').replace(/^(?:[ \t]*\n)+/, '').replace(/\s+$/, '').slice(0, n);
 $('postForm').addEventListener('submit', async e => {
   e.preventDefault();
   const urls = urlsFromText().slice(0, 30);
@@ -638,18 +704,22 @@ $('postForm').addEventListener('submit', async e => {
   const wasEditing = !!editingId;
   try {
     for (const u of urls) if (parseItem(u).type === 'link' && META[u] === undefined) await enrich(u);
-    const items = urls.filter(u => !PHOTOS.some(p => p.url === u)).map(u => {
-      const m = META[u] || {}, it = { url: u }, meta = {};
+    for (const p of PHOTOS) if (p.kind === 'embed' && parseItem(p.url).type === 'link' && META[p.url] === undefined) await enrich(p.url);
+    const mk = (u, extra = {}) => {
+      const m = META[u] || {}, it = { url: u, ...extra }, meta = {};
       if (m.title) meta.title = clip(m.title, 200); if (m.site) meta.site = clip(m.site, 80);
       if (m.image && /^https?:\/\//i.test(m.image)) meta.image = m.image;
       if (Object.keys(meta).length) it.meta = meta; return it;
-    });
-    items.unshift(...PHOTOS.map(p => ({ url: p.url, kind: 'image' })));
+    };
+    const items = [
+      ...PHOTOS.map(p => p.kind === 'image' ? { url: p.url, kind: 'image', ...(p.link ? { link: p.link } : {}) } : mk(p.url, { kind: 'embed' })),
+      ...urls.filter(u => !PHOTOS.some(p => p.url === u)).map(u => mk(u)),
+    ];
     if (items.length > 30) throw new Error('Maximum 30 items per post.');
     const now = Math.floor(Date.now() / 1000);
     const data = {
       title: clip($('title').value, 200) || (items[0].meta && items[0].meta.title) || 'Latest Update',
-      category: clip($('cat').value, 40) || 'General', desc: clip($('desc').value, 3000),
+      category: clip($('cat').value, 40) || 'General', desc: keepText($('desc').value, 6000),
       items, thumb: getThumb(), pinned: $('pinned').checked, updated: now,
     };
     if (data.thumb && !/^(https?:\/\/|data:image\/)/i.test(data.thumb)) throw new Error('Cover image must be a link starting with http or an uploaded image.');
