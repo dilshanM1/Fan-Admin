@@ -287,6 +287,7 @@ details.adsbox>summary small{font-family:var(--font-body);font-size:12px;letter-
             <input class="in" id="cat" maxlength="40" list="catList" placeholder="Actress, Actor, Music…">
             <datalist id="catList"></datalist></div>
           <div class="field"><label style="visibility:hidden">x</label><label class="check"><input type="checkbox" id="pinned"> 📌 Pin as HOT</label></div>
+          <div class="field"><label style="visibility:hidden">x</label><label class="check"><input type="checkbox" id="slider"> 🎞 Show in home slider</label></div>
         </div>
 
         <div class="field"><label for="desc">Description <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
@@ -353,6 +354,8 @@ const FIREBASE_CONFIG = {
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { getFirestore, collection, onSnapshot, query, orderBy, addDoc, doc, updateDoc, deleteDoc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 const FB_READY = !/PASTE_/.test(FIREBASE_CONFIG.apiKey + FIREBASE_CONFIG.projectId);
+const HERO_MAX = 5;   /* max posts in the home-page slider - keep same as heroSlides in index.html */
+const sliderCount = skipId => POSTS.filter(p => p.slider && p.id !== skipId).length;
 const sortPosts = l => l.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.created - a.created);
 
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
@@ -582,16 +585,17 @@ function renderAll() {
 function renderList() {
   const f = $('lfilter').value.trim().toLowerCase();
   const list = POSTS.filter(p => !f || (p.title + ' ' + p.category).toLowerCase().includes(f));
-  $('postCount').textContent = POSTS.length ? `(${list.length}/${POSTS.length})` : '';
+  $('postCount').textContent = POSTS.length ? `(${list.length}/${POSTS.length}) · 🎞 slider ${sliderCount()}/${HERO_MAX}` : '';
   $('postList').innerHTML = list.length ? list.map((p, i) => {
     const t = thumbOf(p);
     return `<div class="post-row" data-id="${esc(p.id)}" style="animation-delay:${Math.min(i, 8) * .04}s">
       ${t ? `<img class="pt" src="${esc(t)}" alt="" referrerpolicy="no-referrer" onerror="this.outerHTML='<div class=&quot;pt&quot;></div>'">` : '<div class="pt"></div>'}
-      <div class="info"><b>${p.pinned ? '📌 ' : ''}${esc(p.title)}</b><small>${esc(p.category)} · ${(p.items || []).length} item(s) · 👁 <i data-v="${esc(p.id)}">${nc(p.views)}</i> · ${timeAgo(p.created)}</small></div>
+      <div class="info"><b>${p.pinned ? '📌 ' : ''}${p.slider ? '🎞 ' : ''}${esc(p.title)}</b><small>${esc(p.category)} · ${(p.items || []).length} item(s) · 👁 <i data-v="${esc(p.id)}">${nc(p.views)}</i> · ${timeAgo(p.created)}</small></div>
       <div class="acts">
         <a class="btn ghost sm" href="./#p=${esc(p.id)}" target="_blank">VIEW</a>
         <button class="btn ghost sm" data-a="edit">EDIT</button>
         <button class="btn ghost sm" data-a="pin">${p.pinned ? 'UNPIN' : 'PIN'}</button>
+        <button class="btn ghost sm" data-a="slide">${p.slider ? '🎞 REMOVE FROM SLIDER' : '🎞 ADD TO SLIDER'}</button>
         <button class="btn sm danger" data-a="del">DELETE</button>
       </div></div>`;
   }).join('') : `<p style="color:var(--muted);margin:10px 4px">${POSTS.length ? 'No posts match your filter.' : 'No posts yet. Paste your first link on the left 👈'}</p>`;
@@ -603,6 +607,10 @@ $('postList').addEventListener('click', async e => {
   try {
     if (b.dataset.a === 'edit') startEdit(p);
     if (b.dataset.a === 'pin') { await updateDoc(doc(db, 'posts', id), { pinned: !p.pinned }); toast(p.pinned ? 'Unpinned' : 'Pinned 📌'); }
+    if (b.dataset.a === 'slide') {
+      if (!p.slider && sliderCount() >= HERO_MAX) { toast('Slider is full (' + HERO_MAX + '). Remove one first.', true); return; }
+      await updateDoc(doc(db, 'posts', id), { slider: !p.slider }); toast(p.slider ? 'Removed from slider' : 'Added to slider 🎞'); return;
+    }
     if (b.dataset.a === 'del') {
       if (!confirm('Delete "' + p.title + '"? This cannot be undone.')) return;
       await deleteDoc(doc(db, 'posts', id)); toast('Deleted'); if (editingId === id) resetForm();
@@ -802,7 +810,7 @@ function startEdit(p) {
   $('links').value = (p.items || []).filter(i => !inList(i)).map(i => i.url).join('\n');
   PHOTOS = (p.items || []).filter(inList).map(i => ({ url: i.url, kind: i.kind === 'embed' ? 'embed' : 'image', ...(i.link ? { link: i.link } : {}) })); drawPhotos();
   (p.items || []).forEach(i => { if (i.meta) META[i.url] = i.meta; });
-  $('title').value = p.title; $('cat').value = p.category; $('desc').value = p.desc || ''; $('pinned').checked = !!p.pinned;
+  $('title').value = p.title; $('cat').value = p.category; $('desc').value = p.desc || ''; $('pinned').checked = !!p.pinned; $('slider').checked = !!p.slider;
   setThumb(p.thumb || '');
   $('formTitle').textContent = 'EDIT POST'; $('saveBtn').textContent = '💾 UPDATE'; $('cancelBtn').classList.remove('hidden');
   chips(); updatePreview(); window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -833,11 +841,12 @@ $('postForm').addEventListener('submit', async e => {
       ...urls.filter(u => !PHOTOS.some(p => p.url === u)).map(u => mk(u)),
     ];
     if (items.length > 30) throw new Error('Maximum 30 items per post.');
+    if ($('slider').checked && sliderCount(editingId) >= HERO_MAX) throw new Error('Slider is full (' + HERO_MAX + ' posts). Remove another post from the slider first, or untick "Show in home slider".');
     const now = Math.floor(Date.now() / 1000);
     const data = {
       title: clip($('title').value, 200) || (items[0].meta && items[0].meta.title) || 'Latest Update',
       category: clip($('cat').value, 40) || 'General', desc: keepText($('desc').value, 6000),
-      items, thumb: getThumb(), pinned: $('pinned').checked, updated: now,
+      items, thumb: getThumb(), pinned: $('pinned').checked, slider: $('slider').checked, updated: now,
     };
     if (data.thumb && !/^(https?:\/\/|data:image\/)/i.test(data.thumb)) throw new Error('Cover image must be a link starting with http or an uploaded image.');
     if (JSON.stringify(data).length > 1000000) throw new Error('Post is too big for Firebase (1 MB). Remove a photo or the uploaded cover image.');
