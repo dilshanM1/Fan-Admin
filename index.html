@@ -184,6 +184,36 @@ dialog h2{font-family:var(--font-head);letter-spacing:2px;margin:0 0 14px;font-s
   .post-row .acts .btn{flex:1;justify-content:center}
 }
 .post-row i[data-v]{font-style:normal}
+
+/* ===== ADS CONTROL ===== */
+details.adsbox{margin-top:24px;padding:0}
+details.adsbox>summary{list-style:none;cursor:pointer;padding:18px 24px;display:flex;align-items:center;gap:12px;font-family:var(--font-head);letter-spacing:2px;font-size:24px}
+details.adsbox>summary::-webkit-details-marker{display:none}
+details.adsbox>summary::after{content:"▾";margin-left:auto;font-size:20px;transition:.25s}
+details.adsbox[open]>summary::after{transform:rotate(180deg)}
+details.adsbox>summary b{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:400}
+details.adsbox>summary small{font-family:var(--font-body);font-size:12px;letter-spacing:0;color:var(--muted)}
+.adsin{padding:0 24px 22px}
+.adsin>p{margin:0 0 14px;color:var(--muted);font-size:13px;line-height:1.6}
+.adrow{padding:13px 0;border-top:1px dashed var(--line)}
+.adrow.master{border-top:0;padding-top:0}
+.adtop{display:flex;align-items:center;gap:14px}
+.adtop .nm{flex:1;min-width:0}
+.adtop .nm b{display:block;font-size:15px}
+.adtop .nm small{display:block;color:var(--muted);font-size:12px;margin-top:2px;line-height:1.5}
+.adopts{display:flex;flex-wrap:wrap;gap:10px 16px;margin:10px 0 0 0}
+.adopts label{display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:#ffd9b8;font-weight:600}
+.adopts .in{width:96px;padding:7px 10px;border-radius:10px}
+.sw{position:relative;width:50px;height:28px;flex-shrink:0}
+.sw input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;z-index:2}
+.sw i{position:absolute;inset:0;border-radius:28px;background:rgba(255,255,255,.14);border:1px solid var(--line);transition:.25s}
+.sw i::after{content:"";position:absolute;left:3px;top:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.25s}
+.sw input:checked+i{background:var(--grad2);border-color:transparent}
+.sw input:checked+i::after{transform:translateX(22px)}
+.adsave{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:16px;padding-top:16px;border-top:1px dashed var(--line)}
+#adsStat{font-size:13px;color:var(--muted)}
+#adsList.off .adrow:not(.master){opacity:.4;pointer-events:none}
+.adwarn{background:rgba(229,38,27,.14);border:1px solid rgba(229,38,27,.4);border-radius:12px;padding:10px 14px;font-size:13px;margin-bottom:14px;line-height:1.6}
 </style>
 </head>
 <body>
@@ -222,6 +252,16 @@ dialog h2{font-family:var(--font-head);letter-spacing:2px;margin:0 0 14px;font-s
       <div class="glass stat"><b id="sViews">0</b><span>Total site views</span></div>
       <div class="glass stat"><b id="sLast" style="font-size:24px;padding-top:9px">—</b><span>Last post</span></div>
     </div>
+
+    <details class="glass adsbox" id="adsBox">
+      <summary><b>📢 ADS CONTROL</b><small id="adsHead">turn each ad spot on / off</small></summary>
+      <div class="adsin">
+        <p>Switch ad spots on or off for the whole site. The ad <b>codes</b> stay in <code>index.html</code>; this panel only decides which spots are used. Changes reach visitors the next time they open or refresh the site.</p>
+        <div class="adwarn hidden" id="adsWarn"></div>
+        <div id="adsList"><div class="adrow"><small style="color:var(--muted)">Loading…</small></div></div>
+        <div class="adsave"><button type="button" class="btn" id="adsSave">💾 SAVE ADS</button><span id="adsStat"></span></div>
+      </div>
+    </details>
 
     <div class="admin-grid">
       <!-- form -->
@@ -311,7 +351,7 @@ const FIREBASE_CONFIG = {
 };
 /* ===================================================================== */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-import { getFirestore, collection, onSnapshot, query, orderBy, addDoc, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { getFirestore, collection, onSnapshot, query, orderBy, addDoc, doc, updateDoc, deleteDoc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 const FB_READY = !/PASTE_/.test(FIREBASE_CONFIG.apiKey + FIREBASE_CONFIG.projectId);
 const sortPosts = l => l.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.created - a.created);
 
@@ -443,6 +483,57 @@ function nice(err) {
 }
 
 /* ---------- auth ---------- */
+/* ---------- ads control ---------- */
+const AD_SPOTS = [
+  { k: 'popunder', name: 'Popunder', note: 'Opens a new tab when a visitor clicks. Earns the most, visitors notice it most.',
+    opts: [['delay', 'Start after (seconds)', 4]] },
+  { k: 'socialBar', name: 'Social Bar', note: 'Small floating message on the page.',
+    opts: [['delay', 'Start after (seconds)', 6]] },
+  { k: 'inFeed', name: 'Home page · between posts', note: 'Native banner shown as a framed card inside the post list.',
+    opts: [['after', 'Show after N posts', 6], ['minPosts', 'Only if posts ≥', 4]] },
+  { k: 'betweenImages', name: 'Inside a post · between photos', note: 'Ad placed between two photos of a post (never after the last photo).',
+    opts: [['after', 'First ad after photo #', 1], ['every', 'Repeat every N photos (0 = once)', 3], ['max', 'Max ads per post', 3]] },
+  { k: 'postEnd', name: 'End of a post', note: '300×250 box after the post, above the share buttons.', opts: [] },
+  { k: 'belowGridWide', name: 'Under the post list · computers', note: '468×60 banner, tablets and computers.', opts: [] },
+  { k: 'belowGridBox', name: 'Under the post list · phones', note: '300×250 box, phones.', opts: [] },
+];
+let adsCfg = {};
+function drawAds() {
+  const on = adsCfg.master !== false;
+  const spot = s => { const c = (adsCfg.spots || {})[s.k] || {}, o = c.opts || {}, isOn = c.on !== false;
+    return `<div class="adrow" data-k="${s.k}"><div class="adtop"><div class="nm"><b>${esc(s.name)}</b><small>${esc(s.note)}</small></div>
+      <label class="sw" title="On / Off"><input type="checkbox" data-on ${isOn ? 'checked' : ''}><i></i></label></div>
+      ${s.opts.length ? `<div class="adopts">${s.opts.map(([n, l, d]) => `<label>${esc(l)}<input class="in" type="number" min="0" max="99" data-o="${n}" value="${o[n] != null ? +o[n] : d}"></label>`).join('')}</div>` : ''}</div>`; };
+  $('adsList').className = on ? '' : 'off';
+  $('adsList').innerHTML = `<div class="adrow master"><div class="adtop"><div class="nm"><b>ALL ADS (master switch)</b><small>Off = no ads anywhere on the site, whatever the switches below say.</small></div>
+    <label class="sw"><input type="checkbox" id="adsMaster" ${on ? 'checked' : ''}><i></i></label></div></div>` + AD_SPOTS.map(spot).join('');
+  $('adsMaster').onchange = e => $('adsList').classList.toggle('off', !e.target.checked);
+  const live = AD_SPOTS.filter(s => ((adsCfg.spots || {})[s.k] || {}).on !== false).length;
+  $('adsHead').textContent = on ? live + ' of ' + AD_SPOTS.length + ' spots on' : 'all ads OFF';
+}
+async function loadAds() {
+  $('adsWarn').classList.add('hidden');
+  try { const s = await getDoc(doc(db, 'settings', 'ads')); adsCfg = s.exists() ? s.data() : {}; }
+  catch (e) {
+    adsCfg = {};
+    $('adsWarn').innerHTML = e.code === 'permission-denied'
+      ? '⚠ Firebase is blocking the ad settings. Add the <b>settings</b> rule (see instructions), publish the rules, then reload this page.'
+      : '⚠ Could not load ad settings: ' + esc(e.message || e.code);
+    $('adsWarn').classList.remove('hidden');
+  }
+  drawAds();
+}
+$('adsSave').onclick = async () => {
+  const cfg = { master: $('adsMaster').checked, spots: {}, updated: Math.floor(Date.now() / 1000) };
+  $('adsList').querySelectorAll('.adrow[data-k]').forEach(r => {
+    const opts = {}; r.querySelectorAll('[data-o]').forEach(i => { const v = parseInt(i.value, 10); opts[i.dataset.o] = isNaN(v) || v < 0 ? 0 : Math.min(v, 99); });
+    cfg.spots[r.dataset.k] = { on: r.querySelector('[data-on]').checked, opts };
+  });
+  $('adsSave').disabled = true; $('adsStat').textContent = 'Saving…';
+  try { await setDoc(doc(db, 'settings', 'ads'), cfg); adsCfg = cfg; drawAds(); $('adsStat').textContent = 'Saved ✔ — live on the site now'; toast('Ads saved ✔'); $('adsWarn').classList.add('hidden'); }
+  catch (e) { $('adsStat').textContent = ''; $('adsWarn').innerHTML = e.code === 'permission-denied' ? '⚠ Not saved: Firebase rules are blocking it. Add the <b>settings</b> rule (see instructions) and publish the rules.' : '⚠ Not saved: ' + esc(e.message || e.code); $('adsWarn').classList.remove('hidden'); toast('Could not save ads', true); }
+  $('adsSave').disabled = false;
+};
 function showLogin() { $('panelView').classList.add('hidden'); $('loginView').classList.remove('hidden'); }
 let lastSig = '', unsubSite = null;
 const nc = n => { n = n || 0; return n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : n >= 1e4 ? Math.round(n / 1e3) + 'K' : n >= 1e3 ? (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K' : String(n); };
@@ -451,6 +542,7 @@ function showPanel(user) {
   $('loginView').classList.add('hidden'); $('panelView').classList.remove('hidden');
   try { localStorage.setItem('fans_noc', '1'); } catch (e) {}   // your own visits to the site are not counted
   if (unsub) unsub(); if (unsubSite) unsubSite();
+  loadAds();
   unsubSite = onSnapshot(doc(db, 'stats', 'site'), s => countUp($('sViews'), s.exists() ? (s.data().views || 0) : 0), () => {});
   unsub = onSnapshot(query(collection(db, 'posts'), orderBy('created', 'desc')), snap => {
     POSTS = sortPosts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
