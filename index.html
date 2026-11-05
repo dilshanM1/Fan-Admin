@@ -298,9 +298,11 @@ details.adsbox>summary small{font-family:var(--font-body);font-size:12px;letter-
           <div class="row" style="flex-wrap:nowrap"><input class="in" id="imgUrl" placeholder="Paste any link here (it is added automatically)" style="flex:1;min-width:0"><button type="button" class="btn sm" id="imgUrlBtn">➕ ADD LINK</button></div>
           <div class="row"><label class="btn ghost sm" style="cursor:pointer">⬆ UPLOAD IMAGE<input type="file" id="imgFile" accept="image/*" multiple hidden></label>
             <small id="imgInfo" style="color:var(--muted)">No photos added</small></div>
+          <label class="chk" style="display:flex;gap:8px;align-items:center;margin:6px 0;font-weight:600"><input type="checkbox" id="cloudOn" checked> ☁ Save images to Cloudinary (permanent)</label>
+          <small id="cloudNote" style="color:var(--muted);display:block;margin-bottom:6px"></small>
           <div class="imgs" id="imgList"></div>
           <div class="sizebar"><i id="sizeI"></i></div>
-          <small>Image <b>links</b> take no space. If you paste a normal web page (news, Google result…) its main picture is used and tapping the picture opens the page. Uploaded photos are shrunk and stored in the post (about 3–6 per post). Use ▲▼ to reorder — the site shows everything in this order.</small>
+          <small>With ☁ on, every pasted image link is uploaded to Cloudinary one by one and the permanent link is saved (paste the image link while it is still fresh). Facebook/YouTube/Instagram <b>post</b> links still embed as before. Image <b>links</b> take no space. If you paste a normal web page (news, Google result…) its main picture is used and tapping the picture opens the page. Uploaded photos are shrunk and stored in the post (about 3–6 per post). Use ▲▼ to reorder — the site shows everything in this order.</small>
         </div>
 
         <div class="field">
@@ -341,6 +343,12 @@ const LOGO={f:'data:image/webp;base64,UklGRjwTAQBXRUJQVlA4WAoAAAAQAAAALwIARQEAQU
 document.querySelectorAll('img[data-logo]').forEach(i=>i.src=LOGO[i.dataset.logo]);document.getElementById('fav').href=LOGO.i;
 /* ================= FIREBASE — paste YOUR config here =================
    Firebase console → Project settings (gear) → General → "Your apps" → Web app (</>) → copy firebaseConfig */
+/* ☁ CLOUDINARY (free image hosting) — fill these two lines, nothing else.
+   cloudName   : Cloudinary dashboard (top-left, "Cloud name")
+   uploadPreset: Settings → Upload → Upload presets → Add → Signing mode = UNSIGNED → copy its name
+   Never put your API secret here. */
+const CLOUDINARY = { cloudName: 'ox3rvzxm', uploadPreset: 'fans_unsigned', optimize: true };
+const CLOUD_READY = !!CLOUDINARY.cloudName && !!CLOUDINARY.uploadPreset && !/PASTE_/.test(CLOUDINARY.cloudName + CLOUDINARY.uploadPreset);
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyCCUXDmJ3ljBnIIi5xccH7cXqI4vDqwYlA",
   authDomain: "pahasaratv-gossip.firebaseapp.com",
@@ -373,6 +381,31 @@ window.imgFail = function (img) {
 };
 
 const $ = id => document.getElementById(id);
+/* ---- Cloudinary upload: copies an image to permanent hosting and returns its permanent link ---- */
+const isCloud = u => /^https?:\/\/res\.cloudinary\.com\//i.test(u);
+const cloudOn = () => CLOUD_READY && !!$('cloudOn') && $('cloudOn').checked;
+const toDataURL = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Error('Could not read the file')); r.readAsDataURL(f); });
+async function cloudUpload(src, w = 1600) {
+  const url = 'https://api.cloudinary.com/v1_1/' + CLOUDINARY.cloudName + '/image/upload';
+  let r, j = {};
+  try {
+    try {
+      const fd = new FormData(); fd.append('file', src); fd.append('upload_preset', CLOUDINARY.uploadPreset);
+      r = await fetch(url, { method: 'POST', body: fd });
+    } catch (e1) {   // some sandboxed viewers cannot send FormData → send a plain form instead
+      const body = new URLSearchParams({ file: typeof src === 'string' ? src : await toDataURL(src), upload_preset: CLOUDINARY.uploadPreset }).toString();
+      r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+    }
+    j = await r.json().catch(() => ({}));
+  } catch (e) { throw new Error('Cloud upload failed (network): ' + e.message); }
+  if (!r.ok || !j.secure_url) throw new Error('Cloud upload failed: ' + ((j.error && j.error.message) || r.status) + ' — the link may have expired (save the picture and use UPLOAD IMAGE), or untick ☁.');
+  return CLOUDINARY.optimize ? j.secure_url.replace('/upload/', '/upload/c_limit,w_' + w + ',q_auto,f_auto/') : j.secure_url;
+}
+/* keep an image link permanently: skip if cloud is off, already cloud, or an uploaded data image */
+async function keepImage(url, w = 1600) {
+  if (!cloudOn() || !/^https?:/i.test(url) || isCloud(url)) return url;
+  return cloudUpload(url, w);
+}
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 function timeAgo(sec) {
@@ -692,7 +725,7 @@ $('thumb').addEventListener('change', () => { if ($('thumb').value !== '(uploade
 $('thumbClear').onclick = () => setThumb('');
 $('file').addEventListener('change', async e => {
   const f = e.target.files[0]; if (!f) return;
-  try { const d = await shrink(f); if (d.length > 700000) throw new Error('Image is still too big. Use a smaller picture.'); setThumb(d); toast('Image ready ✔'); }
+  try { if (cloudOn()) { setThumb(await cloudUpload(f, 1200)); toast('Cover uploaded ☁ ✔'); e.target.value = ''; return; } const d = await shrink(f); if (d.length > 700000) throw new Error('Image is still too big. Use a smaller picture.'); setThumb(d); toast('Image ready ✔'); }
   catch (err) { toast(err.message, true); }
   e.target.value = '';
 });
@@ -722,6 +755,7 @@ $('imgList').addEventListener('click', e => {
 });
 /* shrink one photo until the whole post still fits the budget */
 async function addPhoto(file) {
+  if (cloudOn()) { PHOTOS.push({ url: await cloudUpload(file), kind: 'image' }); return; }
   const room = BUDGET - photoBytes();
   if (room < 40000) throw new Error('This post is full. Publish it, then make another post for more photos.');
   for (const [max, q] of [[1400, .8], [1200, .72], [1000, .65], [800, .6], [640, .55]]) {
@@ -730,6 +764,8 @@ async function addPhoto(file) {
   }
   throw new Error('Not enough room left for this photo in this post.');
 }
+$('cloudNote').textContent = CLOUD_READY ? 'Cloudinary connected ✔' : 'Cloudinary not set up yet — fill CLOUDINARY at the top of the script. Until then images work the old way.';
+if (!CLOUD_READY) $('cloudOn').checked = false;
 /* ---- add ANY link: direct image, Google image result, social post, or normal web page ---- */
 const IMG_HOST = /(^|\.)(fbcdn\.net|cdninstagram\.com|twimg\.com|googleusercontent\.com|gstatic\.com|ibb\.co|postimg\.cc|hscicdn\.com|pinimg\.com|cloudinary\.com|imgix\.net|images\.unsplash\.com|i\.imgur\.com|staticflickr\.com|ytimg\.com|media-amazon\.com|wp\.com)$/i;
 function looksImage(u) {
@@ -758,6 +794,11 @@ function unwrapGoogle(u) {
   return null;
 }
 async function classify(u) {
+  const it = await classifyRaw(u);
+  if (it.kind === 'image') it.url = await keepImage(it.url);
+  return it;
+}
+async function classifyRaw(u) {
   const g = unwrapGoogle(u);
   if (g && g.img) return { url: g.img, kind: 'image', link: /^https?:/i.test(g.link) ? g.link : '' };
   if (g && g.url) u = g.url;
@@ -770,22 +811,27 @@ async function classify(u) {
   if (m && m.image && /^https?:\/\//i.test(m.image)) return { url: m.image, kind: 'image', link: u };
   return { url: u, kind: 'embed' };                                     // no picture found → shows as a link card
 }
-let addingLinks = false;
-async function addImgLinks() {
+let addingLinks = false; const linkQueue = [];
+async function runQueue() {
   if (addingLinks) return;
-  const urls = ($('imgUrl').value.match(/https?:\/\/[^\s<>"']+/gi) || []);
-  if (!urls.length) return toast('Paste a link (starting with http)', true);
-  addingLinks = true; $('imgUrlBtn').disabled = true; $('imgUrlBtn').textContent = 'CHECKING…';
-  let ok = 0, bad = 0;
-  for (const raw of urls) {
-    if (PHOTOS.length >= 30) { toast('Maximum 30 items per post.', true); break; }
+  addingLinks = true; $('imgUrlBtn').disabled = true;
+  let ok = 0;
+  while (linkQueue.length) {
+    if (PHOTOS.length >= 30) { toast('Maximum 30 items per post.', true); linkQueue.length = 0; break; }
+    const raw = linkQueue.shift();
+    $('imgUrlBtn').textContent = (cloudOn() ? '☁ UPLOADING… ' : 'CHECKING… ') + (linkQueue.length ? '(' + linkQueue.length + ' left)' : '');
     try {
       const it = await classify(raw);
       if (!PHOTOS.some(p => p.url === it.url)) { PHOTOS.push(it); ok++; drawPhotos(); }
-    } catch (err) { bad++; toast(err.message, true); }
+    } catch (err) { toast(err.message, true); }
   }
-  $('imgUrl').value = ''; addingLinks = false; $('imgUrlBtn').disabled = false; $('imgUrlBtn').textContent = '➕ ADD LINK';
+  addingLinks = false; $('imgUrlBtn').disabled = false; $('imgUrlBtn').textContent = '➕ ADD LINK';
   if (ok) toast(ok + ' added ✔');
+}
+function addImgLinks() {
+  const urls = ($('imgUrl').value.match(/https?:\/\/[^\s<>"']+/gi) || []);
+  if (!urls.length) return toast('Paste a link (starting with http)', true);
+  $('imgUrl').value = ''; linkQueue.push(...urls); runQueue();
 }
 $('imgUrlBtn').onclick = addImgLinks;
 $('imgUrl').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); addImgLinks(); } });
@@ -801,7 +847,7 @@ $('imgFile').addEventListener('change', async e => {
 
 function resetForm() {
   editingId = ''; titleTouched = false; PHOTOS = []; drawPhotos();
-  $('postForm').reset(); setThumb(''); $('livePrev').innerHTML = ''; chips();
+  const _c = $('cloudOn').checked; $('postForm').reset(); $('cloudOn').checked = _c; setThumb(''); $('livePrev').innerHTML = ''; chips();
   $('formTitle').textContent = 'NEW POST'; $('saveBtn').textContent = '🚀 PUBLISH'; $('cancelBtn').classList.add('hidden');
 }
 function startEdit(p) {
@@ -823,11 +869,14 @@ const clip = (s, n) => String(s || '').trim().slice(0, n);
 const keepText = (s, n) => String(s || '').replace(/\r\n?/g, '\n').replace(/[\u200B\uFEFF]/g, '').replace(/^(?:[ \t]*\n)+/, '').replace(/\s+$/, '').slice(0, n);
 $('postForm').addEventListener('submit', async e => {
   e.preventDefault();
+  if (addingLinks) { toast('Wait — images are still uploading…', true); return; }
   const urls = urlsFromText().slice(0, 30);
   if (!urls.length && !PHOTOS.length) { toast('Add at least one photo or paste a link', true); return; }
   const btn = $('saveBtn'); btn.disabled = true; btn.textContent = 'SAVING…';
   const wasEditing = !!editingId;
   try {
+    for (let i = 0; i < urls.length; i++) if (parseItem(urls[i]).type === 'image') urls[i] = await keepImage(urls[i]);
+    let thumbNow = getThumb(); if (thumbNow && !thumbNow.startsWith('data:')) thumbNow = await keepImage(thumbNow, 1200);
     for (const u of urls) if (parseItem(u).type === 'link' && META[u] === undefined) await enrich(u);
     for (const p of PHOTOS) if (p.kind === 'embed' && parseItem(p.url).type === 'link' && META[p.url] === undefined) await enrich(p.url);
     const mk = (u, extra = {}) => {
@@ -846,7 +895,7 @@ $('postForm').addEventListener('submit', async e => {
     const data = {
       title: clip($('title').value, 200) || (items[0].meta && items[0].meta.title) || 'Latest Update',
       category: clip($('cat').value, 40) || 'General', desc: keepText($('desc').value, 6000),
-      items, thumb: getThumb(), pinned: $('pinned').checked, slider: $('slider').checked, updated: now,
+      items, thumb: thumbNow, pinned: $('pinned').checked, slider: $('slider').checked, updated: now,
     };
     if (data.thumb && !/^(https?:\/\/|data:image\/)/i.test(data.thumb)) throw new Error('Cover image must be a link starting with http or an uploaded image.');
     if (JSON.stringify(data).length > 1000000) throw new Error('Post is too big for Firebase (1 MB). Remove a photo or the uploaded cover image.');
